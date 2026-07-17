@@ -1,0 +1,32 @@
+name: Keep Duolingo streak alive
+
+on:
+  schedule:
+    # Three chances a day (UTC) — GitHub crons are best-effort, so redundancy
+    # makes a missed day effectively impossible. Extra runs are harmless.
+    - cron: "13 9 * * *"   # ~2am Pacific
+    - cron: "42 16 * * *"  # ~9am Pacific
+    - cron: "7 23 * * *"   # ~4pm Pacific
+  workflow_dispatch:
+
+permissions:
+  actions: write # for the keepalive step
+
+jobs:
+  streak:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Random delay so runs never land at the same minute each day
+        if: github.event_name == 'schedule'
+        run: sleep $((RANDOM % 900))
+
+      - name: Complete a practice session
+        run: node streak.js
+        env:
+          DUOLINGO_JWT: ${{ secrets.DUOLINGO_JWT }}
+
+      # GitHub auto-disables schedules on repos with no activity for 60 days;
+      # this keeps the workflow enabled forever without dummy commits.
+      - uses: gautamkrishnar/keepalive-workflow@v2
