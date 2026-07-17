@@ -54,17 +54,26 @@ async function main() {
   if (!jwt) fail("DUOLINGO_JWT environment variable is not set");
 
   const userId = decodeUserId(jwt);
-  const fields = "fromLanguage,learningLanguage,streak,totalXp,username";
+  const fields = "streak,totalXp,username,courses,currentCourse";
   const before = await api("GET", `/users/${userId}?fields=${fields}`, jwt);
+
+  // The account may have no top-level active course, so pick the course with
+  // the most XP (the one actually being studied). currentCourse wins if set.
+  const courses = Array.isArray(before.courses) ? before.courses : [];
+  if (!courses.length) fail("account has no courses");
+  const course =
+    (before.currentCourse && before.currentCourse.learningLanguage && before.currentCourse) ||
+    courses.reduce((best, c) => ((c.xp || 0) > (best.xp || 0) ? c : best));
+
   console.log(
-    `User: ${before.username} | course: ${before.learningLanguage} from ${before.fromLanguage} | ` +
+    `User: ${before.username} | course: ${course.title} (${course.learningLanguage} from ${course.fromLanguage}) | ` +
     `streak: ${before.streak} | totalXp: ${before.totalXp}`
   );
 
   const session = await api("POST", "/sessions", jwt, {
     challengeTypes: CHALLENGE_TYPES,
-    fromLanguage: before.fromLanguage,
-    learningLanguage: before.learningLanguage,
+    fromLanguage: course.fromLanguage,
+    learningLanguage: course.learningLanguage,
     isFinalLevel: false,
     isV2: true,
     juicy: true,
@@ -88,7 +97,7 @@ async function main() {
   });
   console.log(`Completed session: +${result.xpGain ?? "?"} XP`);
 
-  const after = await api("GET", `/users/${userId}?fields=${fields}`, jwt);
+  const after = await api("GET", `/users/${userId}?fields=streak,totalXp`, jwt);
   console.log(`Streak: ${before.streak} -> ${after.streak} | totalXp: ${before.totalXp} -> ${after.totalXp}`);
 
   if (after.totalXp <= before.totalXp) {
